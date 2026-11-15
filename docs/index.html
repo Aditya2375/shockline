@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'; object-src 'none'"
+    />
+    <meta name="referrer" content="no-referrer" />
+    <meta
+      name="description"
+      content="An auditable GARCH(1,1) simulation and variance forecast worksheet. Known parameters, synthetic innovations."
+    />
+    <title>shockline / How volatility carries forward</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script type="module" src="src/app.js"></script>
+  </head>
+  <body>
+    <main>
+      <header>
+        <a class="wordmark" href="#">shockline<span> / 13</span></a
+        ><span class="stamp">KNOWN PARAMETERS · INVENTED PATH</span>
+      </header>
+      <section class="intro">
+        <div>
+          <p class="eyebrow">GARCH(1,1) / VARIANCE LAB</p>
+          <h1>A shock today.<br />A quieter tomorrow?</h1>
+        </div>
+        <p class="lede">
+          Separate the shock from its memory.<br />Inspect the next variance,
+          then watch<br />the model's forecast return to its target.
+        </p>
+      </section>
+      <form id="controls" novalidate>
+        <div class="fields">
+          <label
+            >Innovation path<select id="scenario">
+              <option value="seeded">Seeded uniform</option>
+              <option value="positive" selected>With +4σ shock</option>
+              <option value="negative">With −4σ shock</option>
+            </select></label
+          ><label
+            >Seed<input
+              id="seed"
+              type="number"
+              min="1"
+              max="4294967295"
+              step="1"
+              value="2026" /></label
+          ><label
+            >α / shock weight<input
+              id="alpha"
+              type="number"
+              min="0"
+              max="0.3"
+              step="0.01"
+              value="0.08" /></label
+          ><label
+            >β / variance weight<input
+              id="beta"
+              type="number"
+              min="0"
+              max="0.98"
+              step="0.01"
+              value="0.88" /></label
+          ><label
+            >Target σ / % per period<input
+              id="target"
+              type="number"
+              min="0.5"
+              max="3"
+              step="0.1"
+              value="1" /></label
+          ><button type="submit">
+            Apply inputs <span aria-hidden="true">↗</span>
+          </button>
+        </div>
+        <p id="status" role="status" aria-live="polite"></p>
+      </form>
+      <p id="applied" class="applied"></p>
+      <p id="event-note" class="event-note"></p>
+      <section class="metrics" aria-label="Model parameters">
+        <div>
+          <h2>Long-run σ target</h2>
+          <strong id="target-metric"></strong>
+          <p>Square root of variance target</p>
+        </div>
+        <div>
+          <h2>α + β / persistence</h2>
+          <strong id="persistence"></strong>
+          <p>Expected variance gap decay</p>
+        </div>
+        <div>
+          <h2>Gap half-life</h2>
+          <strong id="half"></strong>
+          <p>Abstract periods, expected variance</p>
+        </div>
+        <div>
+          <h2>ω / baseline variance</h2>
+          <strong id="omega"></strong>
+          <p>Target variance × (1 − α − β)</p>
+        </div>
+      </section>
+      <section class="charts">
+        <div class="section-title">
+          <h2>01 / Conditional volatility path</h2>
+          <p>
+            <span class="net-key">━ σ before the period's shock</span>
+            <span class="free-key">┄ Target σ</span>
+          </p>
+        </div>
+        <svg
+          id="history"
+          viewBox="0 0 1000 250"
+          role="img"
+          aria-labelledby="history-title history-desc"
+        >
+          <title id="history-title">
+            Conditional volatility through 360 simulated periods
+          </title>
+          <desc id="history-desc">
+            Volatility before each innovation; the shock in period181 can only
+            change variance from period182 onward. Exact values are in the
+            ledger.
+          </desc>
+        </svg>
+        <p class="chart-note">
+          Historical chart bounds use the full path, not an as-of view. The
+          selected-period line is dotted; the injected-shock line, when present,
+          is dashed. σ is known before that period's innovation.
+        </p>
+      </section>
+      <section class="audit">
+        <div class="section-title">
+          <h2>02 / Stop after an observation</h2>
+          <p>Forecasts use no later innovations</p>
+        </div>
+        <div class="inspector-controls">
+          <label for="period">As of period</label
+          ><input
+            id="period"
+            type="range"
+            min="1"
+            max="360"
+            value="181"
+          /><output id="selected" for="period"></output>
+        </div>
+        <div id="inspect" class="inspection" aria-live="polite"></div>
+        <p id="identity" class="identity"></p>
+        <div class="section-title">
+          <h2>03 / Forward variance, square-root scale</h2>
+          <p id="forecast-summary"></p>
+        </div>
+        <svg
+          id="forecast"
+          viewBox="0 0 1000 230"
+          role="img"
+          aria-labelledby="forecast-title forecast-desc"
+        >
+          <title id="forecast-title">
+            Square root of model-implied expected variance for the next 60
+            periods
+          </title>
+          <desc id="forecast-desc">
+            This is square root of expected variance, not expected volatility, a
+            realized future path or a confidence interval.
+          </desc>
+        </svg>
+        <p class="chart-note">
+          √E[h] is not E[√h]. This is the square root of a conditional variance
+          forecast, not a predicted return, realized future volatility, or
+          uncertainty band. Future innovations are assumed independent with mean
+          0 and variance 1. The injected shock is treated as an observed
+          intervention.
+        </p>
+        <details>
+          <summary>All 360 periods / recurrence ledger</summary>
+          <p id="ledger-help">
+            Scroll for all fields. Variances use return-squared units, shown to
+            8 decimals. σ and residuals are percentages per abstract period.
+            Calculations use unrounded values.
+          </p>
+          <div
+            class="table-scroll"
+            tabindex="0"
+            role="region"
+            aria-label="Scrollable variance recurrence ledger"
+            aria-describedby="ledger-help"
+          >
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Period</th>
+                  <th scope="col">z</th>
+                  <th scope="col">h before</th>
+                  <th scope="col">σ %</th>
+                  <th scope="col">ε %</th>
+                  <th scope="col">ω</th>
+                  <th scope="col">αε²</th>
+                  <th scope="col">βh</th>
+                  <th scope="col">h next</th>
+                  <th scope="col">σ next %</th>
+                </tr>
+              </thead>
+              <tbody id="ledger"></tbody>
+            </table>
+          </div>
+        </details>
+      </section>
+      <section class="method">
+        <div class="section-title">
+          <h2>04 / The model, without the mystery</h2>
+          <p>Simulate, inspect, forecast. Never fit.</p>
+        </div>
+        <div class="method-grid">
+          <article>
+            <h3>Three pieces make tomorrow.</h3>
+            <p>
+              ε[t] = √h[t] × z[t]. Then h[t+1] = ω + αε[t]² + βh[t]. Start h[1]
+              at target σ² and set ω = target σ² × (1 − α − β). α and β are
+              nonnegative, with α + β ≤ 0.99. The target is a variance
+              expectation under unit-variance innovations, not a cap or an
+              average guaranteed in this sample.
+            </p>
+            <p>
+              Positive and negative shocks of equal size have identical variance
+              effects. This symmetric model has no leverage effect. α = 0
+              ignores every innovation, leaving variance at its target from this
+              initialization.
+            </p>
+          </article>
+          <article>
+            <h3>Forecast the variance gap.</h3>
+            <p>
+              At the selected period's end, h[t+1] is known. For k ≥ 1,
+              E[t]h[t+k] = target σ² + (α + β)^(k−1) × (h[t+1] − target σ²). The
+              chart takes its square root. Gap half-life = log(0.5) / log(α +
+              β); at zero persistence it is not applicable and forecasts reset
+              from horizon 2.
+            </p>
+            <p>
+              The expected variance gap decays with α + β, not β alone. A noisy
+              realized variance path need not decay monotonically. Initializing
+              at the target is not a draw from the stationary distribution; no
+              burn-in is used.
+            </p>
+          </article>
+          <article>
+            <h3>Invented innovations, visible limits.</h3>
+            <p>
+              A seeded xorshift32 sequence produces uniform-like innovations in
+              [−√3, √3), scaled for the ideal uniform distribution's unit
+              variance. Shock modes replace z[181] with +4 or −4. All other
+              innovations stay identical. The intervention breaks the ordinary
+              innovation law at that one period; forecasts do not anticipate
+              another intervention.
+            </p>
+            <p>
+              Zero conditional mean, known parameters, abstract return
+              residuals. No prices, calibration, estimation, likelihood,
+              parameter uncertainty, market data, annualization or predictive
+              validation. Not a normal or Student-t simulation. Educational
+              illustration, not investment advice.
+            </p>
+          </article>
+        </div>
+        <p class="reading">
+          Background:
+          <a
+            href="https://public.econ.duke.edu/%7Eboller/Published_Papers/joe_86.pdf"
+            rel="noreferrer"
+            >Bollerslev (1986)</a
+          >
+          ·
+          <a
+            href="https://arch.readthedocs.io/en/stable/univariate/forecasting.html"
+            rel="noreferrer"
+            >Analytical variance forecasts</a
+          >
+          ·
+          <a
+            href="https://faculty.washington.edu/ezivot/econ589/ch18-garch.pdf"
+            rel="noreferrer"
+            >GARCH notes</a
+          >. No paper, data, assets or external packages are bundled.
+        </p>
+      </section>
+      <footer>
+        <span>shockline / Java core + local browser mirror</span
+        ><span>MIT OR Apache-2.0 · No account, storage or data upload</span>
+      </footer>
+    </main>
+  </body>
+</html>
